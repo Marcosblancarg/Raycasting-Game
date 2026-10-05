@@ -2,6 +2,26 @@
 
 Juego FPS desarrollado con JavaScript, HTML y CSS, con un motor de raycasting y una aplicación de escritorio basada en Electron.
 
+## Capturas del juego
+
+Combate en primera persona, con minimapa e indicadores de salud, energía y munición.
+
+![Combate contra enemigos en un pasillo del juego](docs/screenshots/gameplay-combate.png)
+
+Exploración de los escenarios y vista de un enemigo derrotado.
+
+![Vista en primera persona de los pasillos y un enemigo derrotado](docs/screenshots/gameplay-pasillos.png)
+
+### Arte y sprites
+
+Proyectiles de fuego y sus efectos de impacto.
+
+![Sprites de proyectiles de fuego e impactos](docs/screenshots/sprites-proyectiles.png)
+
+Enemigos y distintos estados de sus animaciones.
+
+![Sprites de enemigos, ataques e impactos](docs/screenshots/sprites-enemigos.png)
+
 ## Ejecutar en Windows
 
 Se requiere Node.js y npm.
