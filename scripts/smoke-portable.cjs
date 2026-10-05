@@ -46,9 +46,7 @@ const profileDir = path.join(temp, 'profile');
 const flags = [
   '--remote-debugging-port=9333',
   '--no-sandbox',
-  '--disable-gpu',
-  '--disable-software-rasterizer',
-  '--mute-audio',
+  '--autoplay-policy=no-user-gesture-required',
   `--user-data-dir=${profileDir}`
 ];
 
@@ -112,7 +110,7 @@ let page = null;
       failedRequests.push({ url: request.url(), error: request.failure()?.errorText });
     });
 
-    await page.bringToFront();
+    await page.bringToFront().catch(() => {});
 
     // Pull any early logs or errors captured in head script
     const earlyData = await safeEval(page, () => ({

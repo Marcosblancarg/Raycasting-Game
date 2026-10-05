@@ -12,10 +12,10 @@ function logCrash(msg) {
 
 if (process.argv.includes('--no-sandbox') || process.env.CI) {
     app.commandLine.appendSwitch('no-sandbox');
-    app.commandLine.appendSwitch('disable-gpu');
-    app.commandLine.appendSwitch('disable-software-rasterizer');
+    app.commandLine.appendSwitch('disable-dev-shm-usage');
 }
 app.commandLine.appendSwitch('allow-file-access-from-files');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 function createWindow() {
     const win = new BrowserWindow({
@@ -42,8 +42,6 @@ function createWindow() {
         logCrash('CRITICAL: Renderer process crashed!');
     });
 }
-
-app.disableHardwareAcceleration();
 
 app.whenReady().then(() => {
     createWindow();

@@ -1,6 +1,84 @@
 import { state } from './state.js';
 import { ASSETS } from './config.js';
 
+function decodeWav(arrayBuffer, audioCtx) {
+    if (!audioCtx || typeof audioCtx.createBuffer !== 'function') return null;
+    try {
+        const view = new DataView(arrayBuffer);
+        if (view.byteLength < 44) return null;
+        if (view.getUint32(0, false) !== 0x52494646 || view.getUint32(8, false) !== 0x57415645) {
+            return null; // Not RIFF WAVE
+        }
+        let offset = 12;
+        let format = 0, channels = 0, sampleRate = 0, bitsPerSample = 0;
+        let dataOffset = 0, dataLength = 0;
+        while (offset < view.byteLength - 8) {
+            const chunkId = view.getUint32(offset, false);
+            const chunkSize = view.getUint32(offset + 4, true);
+            if (chunkId === 0x666d7420) { // 'fmt '
+                format = view.getUint16(offset + 8, true);
+                channels = view.getUint16(offset + 10, true);
+                sampleRate = view.getUint32(offset + 12, true);
+                bitsPerSample = view.getUint16(offset + 22, true);
+            } else if (chunkId === 0x64617461) { // 'data'
+                dataOffset = offset + 8;
+                dataLength = chunkSize;
+                break;
+            }
+            offset += 8 + chunkSize;
+        }
+
+        if (format === 1 && channels > 0 && sampleRate > 0 && dataOffset > 0 && dataLength > 0) {
+            const bytesPerSample = bitsPerSample / 8;
+            if (bytesPerSample < 1) return null;
+            const numFrames = Math.floor(Math.min(dataLength, view.byteLength - dataOffset) / (channels * bytesPerSample));
+            if (numFrames <= 0) return null;
+
+            const buffer = audioCtx.createBuffer(channels, numFrames, sampleRate);
+            if (bitsPerSample === 16) {
+                for (let c = 0; c < channels; c++) {
+                    const channelData = buffer.getChannelData(c);
+                    let bytePos = dataOffset + c * 2;
+                    const step = channels * 2;
+                    for (let i = 0; i < numFrames; i++) {
+                        channelData[i] = view.getInt16(bytePos, true) / 32768.0;
+                        bytePos += step;
+                    }
+                }
+                return buffer;
+            } else if (bitsPerSample === 24) {
+                for (let c = 0; c < channels; c++) {
+                    const channelData = buffer.getChannelData(c);
+                    let bytePos = dataOffset + c * 3;
+                    const step = channels * 3;
+                    for (let i = 0; i < numFrames; i++) {
+                        const b0 = view.getUint8(bytePos);
+                        const b1 = view.getUint8(bytePos + 1);
+                        const b2 = view.getInt8(bytePos + 2);
+                        channelData[i] = (b0 | (b1 << 8) | (b2 << 16)) / 8388608.0;
+                        bytePos += step;
+                    }
+                }
+                return buffer;
+            } else if (bitsPerSample === 8) {
+                for (let c = 0; c < channels; c++) {
+                    const channelData = buffer.getChannelData(c);
+                    let bytePos = dataOffset + c;
+                    const step = channels;
+                    for (let i = 0; i < numFrames; i++) {
+                        channelData[i] = (view.getUint8(bytePos) - 128) / 128.0;
+                        bytePos += step;
+                    }
+                }
+                return buffer;
+            }
+        }
+    } catch (e) {
+        console.warn('decodeWav error:', e);
+    }
+    return null;
+}
+
 export class AudioManager {
     constructor() {
         this.sounds = {};
@@ -33,22 +111,6 @@ export class AudioManager {
         this.decodeQueue = [];
         this.activeDecodes = 0;
         this.maxConcurrentDecodes = 4;
-        this._decoderCtx = null;
-    }
-
-    getDecoderContext() {
-        if (this._decoderCtx) return this._decoderCtx;
-        try {
-            if (typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext)) {
-                const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-                this._decoderCtx = new OfflineCtx(1, 1, 44100);
-                return this._decoderCtx;
-            }
-        } catch (e) {
-            console.warn('OfflineAudioContext creation failed:', e);
-        }
-        if (!this.ctx) this.init();
-        return this.ctx;
     }
 
     init() {
@@ -109,25 +171,34 @@ export class AudioManager {
         this.updateVolumes();
     }
 
+    _createFallbackBuffer() {
+        if (this.ctx && typeof this.ctx.createBuffer === 'function') {
+            try {
+                return this.ctx.createBuffer(1, 4410, 44100);
+            } catch {}
+        }
+        return { duration: 0.1, numberOfChannels: 1, sampleRate: 44100 };
+    }
+
     _processDecodeQueue() {
         while (this.activeDecodes < this.maxConcurrentDecodes && this.decodeQueue.length > 0) {
             const task = this.decodeQueue.shift();
             this.activeDecodes++;
-            const decoder = this.getDecoderContext();
-            if (!decoder) {
-                task.resolve({ duration: 0, numberOfChannels: 1, sampleRate: 44100 });
+            if (!this.ctx) this.init();
+            if (!this.ctx) {
+                task.resolve(this._createFallbackBuffer());
                 this.activeDecodes--;
                 continue;
             }
             try {
                 const bufferCopy = task.arrayBuffer.slice(0);
-                decoder.decodeAudioData(bufferCopy)
+                this.ctx.decodeAudioData(bufferCopy)
                     .then(audioBuffer => {
                         task.resolve(audioBuffer);
                     })
                     .catch(err => {
-                        console.warn('decodeAudioData failed:', err);
-                        task.resolve({ duration: 0, numberOfChannels: 1, sampleRate: 44100 });
+                        console.warn('decodeAudioData fallback:', err);
+                        task.resolve(this._createFallbackBuffer());
                     })
                     .finally(() => {
                         this.activeDecodes--;
@@ -135,13 +206,20 @@ export class AudioManager {
                     });
             } catch (err) {
                 console.warn('decodeAudioData threw synchronously:', err);
-                task.resolve({ duration: 0, numberOfChannels: 1, sampleRate: 44100 });
+                task.resolve(this._createFallbackBuffer());
                 this.activeDecodes--;
             }
         }
     }
 
-    _decodeAudioDataQueued(arrayBuffer) {
+    _decodeAudioData(arrayBuffer) {
+        if (!this.ctx) this.init();
+        if (this.ctx) {
+            const wavBuffer = decodeWav(arrayBuffer, this.ctx);
+            if (wavBuffer) {
+                return Promise.resolve(wavBuffer);
+            }
+        }
         return new Promise((resolve) => {
             this.decodeQueue.push({ arrayBuffer, resolve });
             this._processDecodeQueue();
@@ -155,14 +233,14 @@ export class AudioManager {
                 if (!response.ok && response.status !== 0) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.arrayBuffer();
             })
-            .then(arrayBuffer => this._decodeAudioDataQueued(arrayBuffer))
+            .then(arrayBuffer => this._decodeAudioData(arrayBuffer))
             .then(audioBuffer => {
                 this.sounds[key] = audioBuffer;
                 return audioBuffer;
             })
             .catch(e => {
                 console.warn(`Error loading audio ${src}:`, e);
-                const fallback = { duration: 0, numberOfChannels: 1, sampleRate: 44100 };
+                const fallback = this._createFallbackBuffer();
                 this.sounds[key] = fallback;
                 return fallback;
             });
@@ -195,6 +273,10 @@ export class AudioManager {
             if (isEnemy) {
                 if (this.isLaserActive) return; // Don't play enemy sounds if laser is active
                 if (this.currentEnemySounds >= this.maxEnemySounds) return; // Limit concurrent
+            }
+
+            if (!(this.sounds[key] instanceof AudioBuffer) && typeof this.sounds[key].getChannelData !== 'function') {
+                return;
             }
 
             const source = this.ctx.createBufferSource();
@@ -268,6 +350,10 @@ export class AudioManager {
             if (this.currentMusic && this.currentMusic.source) {
                 try { this.currentMusic.source.stop(); } catch (e) { }
                 this.currentMusic.source.onended = null; // Clear previous callback to avoid double triggers
+            }
+
+            if (!(this.sounds[key] instanceof AudioBuffer) && typeof this.sounds[key].getChannelData !== 'function') {
+                return;
             }
 
             const source = this.ctx.createBufferSource();
