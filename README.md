@@ -24,7 +24,13 @@ Enemigos y distintos estados de sus animaciones.
 
 ![Sprites de enemigos, ataques e impactos](docs/screenshots/sprites-enemigos.png)
 
-## Ejecutar en Windows
+## Descargar y jugar en Windows
+
+La versión portable está disponible en [Releases](https://github.com/Marcosblancarg/Raycasting-Game/releases/latest). Descargá el archivo `Raycasting-Game-0.5.1-Windows-x64-Portable.exe` y abrilo con doble clic: no requiere instalar Node.js ni iniciar un servidor.
+
+Requiere Windows de 64 bits. El primer arranque puede tardar unos segundos. El ejecutable no está firmado digitalmente, por lo que Windows puede mostrar un aviso de editor desconocido.
+
+## Ejecutar desde el código fuente en Windows
 
 Se requiere Node.js y npm.
 
@@ -52,6 +58,8 @@ npm run dist
 ```
 
 La configuración de Electron Builder genera un instalador NSIS para Windows en `dist/`.
+
+Para generar el ejecutable portable: `npm run dist:portable`. El workflow **Windows portable release** de GitHub Actions compila en Windows, prueba el ejecutable y publica la Release únicamente si la prueba pasa.
 
 ## Contenido
 

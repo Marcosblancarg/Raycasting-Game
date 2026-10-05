@@ -14,8 +14,8 @@ function createWindow() {
         autoHideMenuBar: true
     });
 
-    win.loadFile('index.html');
-    win.webContents.openDevTools();
+    win.loadFile(path.join(__dirname, 'index.html'));
+    if (!app.isPackaged) win.webContents.openDevTools();
 
     win.webContents.on('render-process-gone', (event, details) => {
         console.error('CRITICAL: Renderer process gone:', details.reason);
