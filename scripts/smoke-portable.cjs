@@ -47,6 +47,8 @@ const flags = [
   '--remote-debugging-port=9333',
   '--no-sandbox',
   '--disable-gpu',
+  '--disable-software-rasterizer',
+  '--mute-audio',
   `--user-data-dir=${profileDir}`
 ];
 

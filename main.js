@@ -13,6 +13,7 @@ function logCrash(msg) {
 if (process.argv.includes('--no-sandbox') || process.env.CI) {
     app.commandLine.appendSwitch('no-sandbox');
     app.commandLine.appendSwitch('disable-gpu');
+    app.commandLine.appendSwitch('disable-software-rasterizer');
 }
 app.commandLine.appendSwitch('allow-file-access-from-files');
 

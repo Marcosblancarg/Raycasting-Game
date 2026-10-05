@@ -33,12 +33,30 @@ export class AudioManager {
         this.decodeQueue = [];
         this.activeDecodes = 0;
         this.maxConcurrentDecodes = 4;
+        this._decoderCtx = null;
+    }
+
+    getDecoderContext() {
+        if (this._decoderCtx) return this._decoderCtx;
+        try {
+            if (typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext)) {
+                const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+                this._decoderCtx = new OfflineCtx(1, 1, 44100);
+                return this._decoderCtx;
+            }
+        } catch (e) {
+            console.warn('OfflineAudioContext creation failed:', e);
+        }
+        if (!this.ctx) this.init();
+        return this.ctx;
     }
 
     init() {
         if (!this.ctx) {
             try {
-                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                this.ctx = new AudioCtx();
 
                 // Create Hierarchy
                 this.sfxNode = this.ctx.createGain();
@@ -95,29 +113,37 @@ export class AudioManager {
         while (this.activeDecodes < this.maxConcurrentDecodes && this.decodeQueue.length > 0) {
             const task = this.decodeQueue.shift();
             this.activeDecodes++;
-            if (!this.ctx) this.init();
-            if (!this.ctx) {
-                task.reject(new Error('AudioContext not available'));
+            const decoder = this.getDecoderContext();
+            if (!decoder) {
+                task.resolve({ duration: 0, numberOfChannels: 1, sampleRate: 44100 });
                 this.activeDecodes--;
                 continue;
             }
-            this.ctx.decodeAudioData(task.arrayBuffer)
-                .then(audioBuffer => {
-                    task.resolve(audioBuffer);
-                })
-                .catch(err => {
-                    task.reject(err);
-                })
-                .finally(() => {
-                    this.activeDecodes--;
-                    this._processDecodeQueue();
-                });
+            try {
+                const bufferCopy = task.arrayBuffer.slice(0);
+                decoder.decodeAudioData(bufferCopy)
+                    .then(audioBuffer => {
+                        task.resolve(audioBuffer);
+                    })
+                    .catch(err => {
+                        console.warn('decodeAudioData failed:', err);
+                        task.resolve({ duration: 0, numberOfChannels: 1, sampleRate: 44100 });
+                    })
+                    .finally(() => {
+                        this.activeDecodes--;
+                        this._processDecodeQueue();
+                    });
+            } catch (err) {
+                console.warn('decodeAudioData threw synchronously:', err);
+                task.resolve({ duration: 0, numberOfChannels: 1, sampleRate: 44100 });
+                this.activeDecodes--;
+            }
         }
     }
 
     _decodeAudioDataQueued(arrayBuffer) {
-        return new Promise((resolve, reject) => {
-            this.decodeQueue.push({ arrayBuffer, resolve, reject });
+        return new Promise((resolve) => {
+            this.decodeQueue.push({ arrayBuffer, resolve });
             this._processDecodeQueue();
         });
     }
@@ -134,7 +160,12 @@ export class AudioManager {
                 this.sounds[key] = audioBuffer;
                 return audioBuffer;
             })
-            .catch(e => console.error(`Error loading audio ${src}:`, e));
+            .catch(e => {
+                console.warn(`Error loading audio ${src}:`, e);
+                const fallback = { duration: 0, numberOfChannels: 1, sampleRate: 44100 };
+                this.sounds[key] = fallback;
+                return fallback;
+            });
     }
 
     stop(key) {
@@ -149,60 +180,62 @@ export class AudioManager {
     }
 
     play(key, loop = false, volume = 1.0) {
-        if (!this.ctx) {
-            // Try init if not seemingly active? No, usually distinct start.
-            // console.warn('AudioContext not init'); 
-            return;
-        }
-        if (!this.sounds[key]) { console.warn(`Sound not found: ${key}`); return; }
-        if (this.ctx.state === 'suspended') this.ctx.resume();
-
-        // Identify Type
-        const isEnemy = key.startsWith('monster') || key.startsWith('zombie') || key.startsWith('brain') || key.startsWith('geco') || key.startsWith('soldier');
-        const isLaser = key.includes('laser');
-
-        // Logic Check
-        if (isEnemy) {
-            if (this.isLaserActive) return; // Don't play enemy sounds if laser is active
-            if (this.currentEnemySounds >= this.maxEnemySounds) return; // Limit concurrent
+        if (!this.ctx) return;
+        if (!this.sounds[key] || !this.sounds[key].duration) return;
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
         }
 
-        const source = this.ctx.createBufferSource();
-        source.buffer = this.sounds[key];
-        source.loop = loop;
+        try {
+            // Identify Type
+            const isEnemy = key.startsWith('monster') || key.startsWith('zombie') || key.startsWith('brain') || key.startsWith('geco') || key.startsWith('soldier');
+            const isLaser = key.includes('laser');
 
-        const gainNode = this.ctx.createGain();
-        // Individual volume adjustment (relative to category volume)
-        gainNode.gain.value = volume;
-
-        source.connect(gainNode);
-
-        // Routing
-        if (isEnemy) {
-            gainNode.connect(this.enemyNode);
-            this.currentEnemySounds++;
-        } else if (isLaser) {
-            gainNode.connect(this.priorityNode);
-        } else {
-            gainNode.connect(this.sfxNode);
-        }
-
-        source.start(0);
-
-        // Tracking
-        this.activeSources[key] = source;
-
-        source.onended = () => {
-            if (this.activeSources[key] === source) {
-                delete this.activeSources[key];
-            }
+            // Logic Check
             if (isEnemy) {
-                this.currentEnemySounds--;
-                if (this.currentEnemySounds < 0) this.currentEnemySounds = 0;
+                if (this.isLaserActive) return; // Don't play enemy sounds if laser is active
+                if (this.currentEnemySounds >= this.maxEnemySounds) return; // Limit concurrent
             }
-        };
 
-        return { source, gainNode };
+            const source = this.ctx.createBufferSource();
+            source.buffer = this.sounds[key];
+            source.loop = loop;
+
+            const gainNode = this.ctx.createGain();
+            // Individual volume adjustment (relative to category volume)
+            gainNode.gain.value = volume;
+
+            source.connect(gainNode);
+
+            // Routing
+            if (isEnemy) {
+                if (this.enemyNode) gainNode.connect(this.enemyNode);
+                this.currentEnemySounds++;
+            } else if (isLaser) {
+                if (this.priorityNode) gainNode.connect(this.priorityNode);
+            } else {
+                if (this.sfxNode) gainNode.connect(this.sfxNode);
+            }
+
+            source.start(0);
+
+            // Tracking
+            this.activeSources[key] = source;
+
+            source.onended = () => {
+                if (this.activeSources[key] === source) {
+                    delete this.activeSources[key];
+                }
+                if (isEnemy) {
+                    this.currentEnemySounds--;
+                    if (this.currentEnemySounds < 0) this.currentEnemySounds = 0;
+                }
+            };
+
+            return { source, gainNode };
+        } catch (e) {
+            console.warn("Error playing sound:", e);
+        }
     }
 
     playMusic(key, onEndedCallback) {
@@ -226,30 +259,41 @@ export class AudioManager {
             return;
         }
 
-        // Stop previous music (fade out could be nice but simple stop for now)
-        if (this.currentMusic && this.currentMusic.source) {
-            try { this.currentMusic.source.stop(); } catch (e) { }
-            this.currentMusic.source.onended = null; // Clear previous callback to avoid double triggers
+        if (!this.sounds[key] || !this.sounds[key].duration) {
+            return;
         }
 
-        const source = this.ctx.createBufferSource();
-        source.buffer = this.sounds[key];
-        source.loop = false; // playlist logic handles looping manually
+        try {
+            // Stop previous music (fade out could be nice but simple stop for now)
+            if (this.currentMusic && this.currentMusic.source) {
+                try { this.currentMusic.source.stop(); } catch (e) { }
+                this.currentMusic.source.onended = null; // Clear previous callback to avoid double triggers
+            }
 
-        // No individual gain needed for music track typically, but can add one
-        const gainNode = this.ctx.createGain();
-        gainNode.gain.value = 1.0;
+            const source = this.ctx.createBufferSource();
+            source.buffer = this.sounds[key];
+            source.loop = false; // playlist logic handles looping manually
 
-        source.connect(gainNode);
-        gainNode.connect(this.musicNode); // Route to music node only
+            const gainNode = this.ctx.createGain();
+            gainNode.gain.value = 1.0;
 
-        source.start(0);
+            source.connect(gainNode);
+            if (this.musicNode) {
+                gainNode.connect(this.musicNode);
+            } else {
+                gainNode.connect(this.ctx.destination);
+            }
 
-        if (onEndedCallback) {
-            source.onended = onEndedCallback;
+            source.start(0);
+
+            if (onEndedCallback) {
+                source.onended = onEndedCallback;
+            }
+
+            this.currentMusic = { source, gainNode, key };
+        } catch (e) {
+            console.warn("Error playing music:", e);
         }
-
-        this.currentMusic = { source, gainNode, key };
     }
 
     setMusicVolume(vol) {
