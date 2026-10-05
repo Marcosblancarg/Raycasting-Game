@@ -14,7 +14,7 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'Raycasting portable test '))
 const portable = path.join(temp, path.basename(executable));
 fs.copyFileSync(executable, portable);
 const child = spawn(portable, ['--remote-debugging-port=9333', `--user-data-dir=${path.join(temp, 'profile')}`], {
-  cwd: os.tmpdir(), windowsHide: true, stdio: 'ignore'
+  cwd: os.tmpdir(), windowsHide: true, stdio: ['ignore', fs.openSync(path.join(out, 'stdout.log'), 'w'), fs.openSync(path.join(out, 'stderr.log'), 'w')]
 });
 child.on('error', error => { console.error(error); process.exitCode = 1; });
 const errors = [];
@@ -45,7 +45,6 @@ const consoleMessages = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => consoleMessages.push({type: message.type(), text: message.text()}));
     page.on('requestfailed', request => failedRequests.push({url: request.url(), error: request.failure()?.errorText}));
-    await page.reload();
     await page.bringToFront();
     await page.waitForFunction(() => window.state && Object.keys(window.state.textureData).length > 0, null, {polling: 100, timeout: 60000});
     await page.locator('#btn-start').waitFor({ state: 'visible' });
