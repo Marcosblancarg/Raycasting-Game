@@ -3,22 +3,41 @@ import { state } from './state.js';
 import { audioManager } from './audio.js';
 
 export function getTextureData(img) {
-    const c = document.createElement('canvas');
-    c.width = img.width;
-    c.height = img.height;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    return ctx.getImageData(0, 0, c.width, c.height).data;
+    try {
+        const c = document.createElement('canvas');
+        const w = img.naturalWidth || img.width || 64;
+        const h = img.naturalHeight || img.height || 64;
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        return ctx.getImageData(0, 0, w, h).data;
+    } catch (e) {
+        console.error("Error extracting texture data:", e);
+        const w = img.naturalWidth || img.width || 64;
+        const h = img.naturalHeight || img.height || 64;
+        return new Uint8ClampedArray(w * h * 4);
+    }
 }
 
 // Helper to load images
 const loadImg = (src, key) => {
     const img = new Image();
-    img.onload = () => {
-        if (key) state.textureData[key] = getTextureData(img);
+    const handleLoad = () => {
+        try {
+            if (key && !state.textureData[key]) {
+                state.textureData[key] = getTextureData(img);
+            }
+        } catch (e) {
+            console.error(`Failed to process texture data for ${src} (${key}):`, e);
+        }
     };
-    img.onerror = () => console.error(`Failed to load: ${src}`);
+    img.onload = handleLoad;
+    img.onerror = (e) => console.error(`Failed to load: ${src}`, e);
     img.src = src;
+    if (img.complete && (img.naturalWidth > 0 || img.width > 0)) {
+        handleLoad();
+    }
     return img;
 };
 

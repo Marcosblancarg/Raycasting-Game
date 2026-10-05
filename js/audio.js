@@ -126,7 +126,7 @@ export class AudioManager {
         if (this.sounds[key]) return Promise.resolve(this.sounds[key]);
         return fetch(src)
             .then(response => {
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                if (!response.ok && response.status !== 0) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.arrayBuffer();
             })
             .then(arrayBuffer => this._decodeAudioDataQueued(arrayBuffer))

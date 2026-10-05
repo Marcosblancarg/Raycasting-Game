@@ -28,6 +28,7 @@
         "portable": {
             "artifactName": "Raycasting-Game-${version}-Windows-x64-Portable.exe"
         },
+        "asar": false,
         "compression": "maximum",
         "files": [
             "main.js",
