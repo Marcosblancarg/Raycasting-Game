@@ -20,6 +20,8 @@ child.on('error', error => { console.error(error); process.exitCode = 1; });
 const errors = [];
 const failedRequests = [];
 let browser;
+let page;
+const consoleMessages = [];
 
 (async () => {
   try {
@@ -33,7 +35,6 @@ let browser;
     }
     browser = await chromium.connectOverCDP('http://127.0.0.1:9333');
     const context = browser.contexts()[0];
-    let page;
     for (let attempt = 0; attempt < 60; attempt++) {
       page = context.pages().find(p => p.url().includes('index.html'));
       if (page) break;
@@ -42,16 +43,18 @@ let browser;
     assert(page, 'Game window must load index.html');
     assert(!context.pages().some(p => p.url().startsWith('devtools:')), 'No developer tools at startup');
     page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => consoleMessages.push({type: message.type(), text: message.text()}));
     page.on('requestfailed', request => failedRequests.push({url: request.url(), error: request.failure()?.errorText}));
     await page.reload();
-    await page.waitForFunction(() => window.state && Object.keys(window.state.textureData).length > 0);
+    await page.bringToFront();
+    await page.waitForFunction(() => window.state && Object.keys(window.state.textureData).length > 0, null, {polling: 100, timeout: 60000});
     await page.locator('#btn-start').waitFor({ state: 'visible' });
     await page.screenshot({path: path.join(out, 'menu.png')});
     await page.locator('#btn-start').click();
-    await page.waitForFunction(() => document.getElementById('intro-video').readyState >= 2);
+    await page.waitForFunction(() => document.getElementById('intro-video').readyState >= 2, null, {polling: 100});
     await page.keyboard.press('Space');
-    await page.waitForFunction(() => window.state.gameState === 'PLAYING' && window.state.map);
-    await page.waitForFunction(() => Object.keys(window.audioManager.sounds).length > 0);
+    await page.waitForFunction(() => window.state.gameState === 'PLAYING' && window.state.map, null, {polling: 100});
+    await page.waitForFunction(() => Object.keys(window.audioManager.sounds).length > 0, null, {polling: 100});
     const before = await page.evaluate(() => window.state.lastTime);
     await page.waitForTimeout(3000);
     const state = await page.evaluate(() => ({
@@ -71,7 +74,9 @@ let browser;
     assert.equal(failedRequests.filter(r => !r.error?.includes('ERR_ABORTED')).length, 0, 'Game assets must load');
     console.log('Portable smoke test passed:', JSON.stringify(state));
   } catch (error) {
-    fs.writeFileSync(path.join(out, 'failure.json'), JSON.stringify({error: error.stack, errors, failedRequests}, null, 2));
+    const diagnostics = page ? await page.evaluate(() => ({ready: document.readyState, state: window.state?.gameState, textures: window.state?.textureData && Object.keys(window.state.textureData), images: Array.from(document.images).map(i => ({src: i.src, width: i.naturalWidth})), floors: window.state?.textures?.floors?.map(i => ({src: i.src, complete: i.complete, width: i.naturalWidth}))})).catch(() => null) : null;
+    if (page) await page.screenshot({path: path.join(out, 'failure.png'), timeout: 10000}).catch(() => {});
+    fs.writeFileSync(path.join(out, 'failure.json'), JSON.stringify({error: error.stack, diagnostics, consoleMessages, errors, failedRequests}, null, 2));
     process.exitCode = 1;
     console.error(error);
   } finally {

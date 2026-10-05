@@ -95,7 +95,7 @@ export const ASSETS = {
             'assets/Gun/cannon_fire_ball/cannon_ball_hit3.png'
         ],
         fireballDecal: 'assets/Gun/cannon_fire_ball/cannon_ball_hit4.png',
-        soldier: ['assets/enemy/Soldier_1.png', 'assets/enemy/Soldier_2.png', 'assets/enemy/Soldier_3.png'],
+        soldier: ['assets/enemy/Soldier_1.png', 'assets/enemy/Soldier_2.png'],
         soldier0: 'assets/enemy/Soldier_0.png',
         soldierStand: 'assets/enemy/Soldier_Stand.png',
         soldierAttack: 'assets/enemy/Soldier_Attac.png',
