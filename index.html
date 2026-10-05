@@ -12,7 +12,16 @@
     <title>RayCaster</title>
     <link rel="stylesheet" href="css/style.css">
     <script>
+        window.__logs = [];
+        window.__errors = [];
+        const _origLog = console.log;
+        const _origWarn = console.warn;
+        const _origErr = console.error;
+        console.log = function(...args) { window.__logs.push({type: 'log', text: args.join(' ')}); _origLog.apply(console, args); };
+        console.warn = function(...args) { window.__logs.push({type: 'warn', text: args.join(' ')}); _origWarn.apply(console, args); };
+        console.error = function(...args) { window.__logs.push({type: 'error', text: args.join(' ')}); _origErr.apply(console, args); };
         window.onerror = function (message, source, lineno, colno, error) {
+            window.__errors.push({message: String(message), source, lineno, colno, error: error?.stack});
             const div = document.createElement('div');
             div.style.position = 'fixed';
             div.style.top = '0';
@@ -205,7 +214,7 @@
             style="background: black; padding: 0; width: 100%; height: 100%; max-width: none; border: none;">
             <!-- <img src="assets/History.png" alt="HISTORY" style="width: 100%; height: 100%; object-fit: contain;"> -->
             <video id="intro-video" style="width: 100%; height: 100%; object-fit: contain;"
-                src="assets/intro_video.mp4"></video>
+                src="assets/intro_video.mp4" preload="auto" playsinline></video>
             <div id="skip-hint"
                 style="position: absolute; bottom: 20px; right: 20px; color: white; font-family: monospace; opacity: 0.5;">
                 Press SPACE to Skip</div>

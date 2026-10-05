@@ -419,11 +419,13 @@ export function initAssets() {
         loadAudio(ASSETS.audio.weapons.laser, 'laser_fire');
 
         if (ASSETS.audio.music && Array.isArray(ASSETS.audio.music)) {
-            ASSETS.audio.music.forEach((src, i) => loadAudio(src, `bg_music_${i + 1}`));
             state.musicCount = ASSETS.audio.music.length;
+            if (ASSETS.audio.music.length > 0) {
+                loadAudio(ASSETS.audio.music[0], 'bg_music_1');
+            }
         } else {
             // Fallback for object logic or empty
-            if (ASSETS.audio.music.bg1) loadAudio(ASSETS.audio.music.bg1, 'bg_music_1');
+            if (ASSETS.audio.music && ASSETS.audio.music.bg1) loadAudio(ASSETS.audio.music.bg1, 'bg_music_1');
             state.musicCount = 1;
         }
 

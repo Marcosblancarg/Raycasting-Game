@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { ASSETS } from './config.js';
 
 export class AudioManager {
     constructor() {
@@ -27,26 +28,35 @@ export class AudioManager {
         this.currentMusic = null;
         this.lastFrameTime = 0;
         this.soundsPlayedThisFrame = 0;
+
+        // Queue to serialize/limit concurrent audio decodes
+        this.decodeQueue = [];
+        this.activeDecodes = 0;
+        this.maxConcurrentDecodes = 4;
     }
 
     init() {
         if (!this.ctx) {
-            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-            // Create Hierarchy
-            this.sfxNode = this.ctx.createGain();
-            this.enemyNode = this.ctx.createGain();
-            this.priorityNode = this.ctx.createGain();
-            this.musicNode = this.ctx.createGain();
+                // Create Hierarchy
+                this.sfxNode = this.ctx.createGain();
+                this.enemyNode = this.ctx.createGain();
+                this.priorityNode = this.ctx.createGain();
+                this.musicNode = this.ctx.createGain();
 
-            // Connect to destination
-            this.sfxNode.connect(this.ctx.destination);
-            this.enemyNode.connect(this.ctx.destination);
-            this.priorityNode.connect(this.ctx.destination);
-            this.musicNode.connect(this.ctx.destination);
+                // Connect to destination
+                this.sfxNode.connect(this.ctx.destination);
+                this.enemyNode.connect(this.ctx.destination);
+                this.priorityNode.connect(this.ctx.destination);
+                this.musicNode.connect(this.ctx.destination);
 
-            // Apply initial volumes
-            this.updateVolumes();
+                // Apply initial volumes
+                this.updateVolumes();
+            } catch (err) {
+                console.warn('AudioContext creation failed or not supported in this environment:', err);
+            }
         }
     }
 
@@ -81,19 +91,48 @@ export class AudioManager {
         this.updateVolumes();
     }
 
+    _processDecodeQueue() {
+        while (this.activeDecodes < this.maxConcurrentDecodes && this.decodeQueue.length > 0) {
+            const task = this.decodeQueue.shift();
+            this.activeDecodes++;
+            if (!this.ctx) this.init();
+            if (!this.ctx) {
+                task.reject(new Error('AudioContext not available'));
+                this.activeDecodes--;
+                continue;
+            }
+            this.ctx.decodeAudioData(task.arrayBuffer)
+                .then(audioBuffer => {
+                    task.resolve(audioBuffer);
+                })
+                .catch(err => {
+                    task.reject(err);
+                })
+                .finally(() => {
+                    this.activeDecodes--;
+                    this._processDecodeQueue();
+                });
+        }
+    }
+
+    _decodeAudioDataQueued(arrayBuffer) {
+        return new Promise((resolve, reject) => {
+            this.decodeQueue.push({ arrayBuffer, resolve, reject });
+            this._processDecodeQueue();
+        });
+    }
+
     load(key, src) {
+        if (this.sounds[key]) return Promise.resolve(this.sounds[key]);
         return fetch(src)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.arrayBuffer();
             })
-            .then(arrayBuffer => {
-                if (!this.ctx) this.init();
-                return this.ctx.decodeAudioData(arrayBuffer);
-            })
+            .then(arrayBuffer => this._decodeAudioDataQueued(arrayBuffer))
             .then(audioBuffer => {
                 this.sounds[key] = audioBuffer;
-                console.log(`Audio loaded: ${key}`);
+                return audioBuffer;
             })
             .catch(e => console.error(`Error loading audio ${src}:`, e));
     }
@@ -167,8 +206,25 @@ export class AudioManager {
     }
 
     playMusic(key, onEndedCallback) {
-        if (!this.ctx || !this.sounds[key]) return;
-        if (this.ctx.state === 'suspended') this.ctx.resume();
+        if (!this.ctx) this.init();
+        if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+        }
+
+        if (!this.sounds[key]) {
+            const match = key.match(/bg_music_(\d+)/);
+            if (match && ASSETS && ASSETS.audio && ASSETS.audio.music) {
+                const idx = parseInt(match[1]) - 1;
+                const src = ASSETS.audio.music[idx];
+                if (src) {
+                    this.load(key, src).then(() => {
+                        this.playMusic(key, onEndedCallback);
+                    });
+                    return;
+                }
+            }
+            return;
+        }
 
         // Stop previous music (fade out could be nice but simple stop for now)
         if (this.currentMusic && this.currentMusic.source) {

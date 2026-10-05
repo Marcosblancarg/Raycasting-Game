@@ -2893,9 +2893,13 @@ function finalizeLevelComplete() {
 }
 
 // Start the game
-window.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', () => {
+        init();
+    });
+} else {
     init();
-});
+}
 
 
 

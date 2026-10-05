@@ -5,6 +5,7 @@ export const state = {
     showMinimap: false,
     showMap: false,
     level: 1,
+    textureData: {},
 
     // --- MOBILE MODE ---
     mobileMode: false,
@@ -164,3 +165,8 @@ state.clearProjectiles = function() {
         state.projectilePool.forEach(p => p.active = false);
     }
 };
+
+if (typeof window !== 'undefined') {
+    window.state = state;
+}
+
