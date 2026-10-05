@@ -1,0 +1,82 @@
+# =====================================================
+#  RayCaster V3 — .htaccess para Apache
+#  Servidor: rc.blanc.com.ar
+# =====================================================
+
+# --- MIME Types ---
+# Necesarios para que ES Modules y los assets carguen correctamente
+
+AddType text/javascript .js
+AddType text/css .css
+AddType text/html .html
+AddType application/json .json
+AddType image/png .png
+AddType image/jpeg .jpg .jpeg
+AddType image/gif .gif
+AddType image/webp .webp
+AddType audio/mpeg .mp3
+AddType audio/wav .wav
+AddType audio/ogg .ogg
+AddType video/mp4 .mp4
+AddType video/webm .webm
+AddType image/svg+xml .svg
+AddType image/x-icon .ico
+
+# --- Headers de Seguridad y CORS ---
+# Requeridos para que los ES Modules y Web Workers funcionen correctamente
+
+<IfModule mod_headers.c>
+    # Permite que el juego cargue sus propios módulos JS
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Embedder-Policy "require-corp"
+
+    # Permite cargar assets del mismo origen (necesario para Web Workers y fetch de audio)
+    Header always set Cross-Origin-Resource-Policy "same-origin"
+</IfModule>
+
+# --- Compresión Gzip ---
+# Reduce el tamaño de transferencia de los archivos JS y CSS
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/json
+</IfModule>
+
+# --- Cache de Assets Estáticos ---
+# Los assets del juego (imagenes, audio) pueden cachearse bien
+# Los archivos JS tienen ?v=1 en el HTML para forzar refresco si cambian
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # Imágenes: 1 mes
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/webp "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+
+    # Audio y Video: 1 mes
+    ExpiresByType audio/mpeg "access plus 1 month"
+    ExpiresByType audio/wav "access plus 1 month"
+    ExpiresByType video/mp4 "access plus 1 month"
+
+    # CSS y JS: 1 semana (los JS tienen ?v=X para bust de cache)
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType text/javascript "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+
+    # HTML: sin cache (para que siempre cargue la version mas reciente)
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# --- Pagina de Error (opcional) ---
+# ErrorDocument 404 /404.html
+
+# --- Redireccion a index.html ---
+# Si alguien entra sin especificar archivo, carga el juego
+
+DirectoryIndex index.html

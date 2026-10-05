@@ -1,0 +1,95 @@
+GAME ANALYSIS: RAYCASTER FPS V0.5.1
+
+1. OVERVIEW
+   - Genre: First-Person Shooter (FPS) / Raycaster (Wolfenstein 3D style).
+   - Engine: Custom-built JavaScript engine using HTML5 Canvas (2D Context).
+   - Platform: Web (Browser) / Electron (Desktop App).
+   - Version: 0.5.1.
+   - Objective: Navigate procedurally generated dungeons, survive enemy waves, collect three colored totems (Red, Green, Blue), and place them at the central Totem to advance to the next level.
+
+2. CORE ARCHITECTURE
+   - Entry Point: `index.html` loads `js/game_core.js` as the main module.
+   - Game Loop: `requestAnimationFrame` drives the `loop()` function in `game_core.js`, handling `update(dt)` and `render(canvas, ctx)`.
+   - State Management: Global `state` object (in `js/state.js`) holds all game data: player stats, map data, enemies, items, projectiles, and game status (PLAYING, PAUSED, DEAD, MENU).
+   - Configuration: `js/config.js` defines constants (FOV, speed, resolution) and asset paths.
+
+3. RENDERING ENGINE (`js/raycaster.js`)
+   - Technique: Raycasting with texture mapping.
+   - Walls: Vertical strips rendered based on distance to player. Supports multiple textures defined in `map.data`.
+   - Floor/Ceiling: Scanline rendering with texture mapping. Supports multiple floor/ceiling textures.
+   - Sprites: Billboarded sprites (always facing player) with Z-buffering to handle depth correctly against walls and other sprites.
+   - Lighting: Distance-based shading (darkening) for walls and sprites.
+   - Minimap: Real-time top-down view showing visited areas, enemies, and items.
+   - Visual Effects:
+     - Weapon recoil and bobbing.
+     - Damage overlay (red flash).
+     - Ink blindness effect (from Geco enemies).
+     - Decals (bullet holes, scorch marks) on walls.
+
+4. GAMEPLAY MECHANICS
+   - Player (`js/player.js`):
+     - Movement: WASD / Arrow keys for movement and rotation.
+     - Sprint: Shift key doubles movement speed.
+     - Health: Starts at 100, decreases on enemy hits, regenerates via "Add Life" items.
+     - Inventory: Tracks collected Totems (Red, Green, Blue).
+   - Weapons:
+     1. Pistol: Infinite ammo, single shot.
+     2. Shotgun: High damage, spread fire, close-range knockback/stun.
+     3. Machinegun: Rapid fire, moderate damage.
+     4. Sonar: Utility tool. Detects direction of Totems via audio cues (stereo panning).
+     5. Cannon: Projectile-based (Fireball), area damage (explosions).
+   - Combat:
+     - Hitscan for bullets (Pistol, Shotgun, MG).
+     - Projectile physics for Cannon and enemy attacks (Energy Ball, Ink Ball).
+     - Hit markers and audio feedback on damage.
+
+5. ARTIFICIAL INTELLIGENCE (`js/game_core.js`)
+   - Enemy Types:
+     1. Soldier: Basic ranged attacker.
+     2. Monster: Melee/Ranged hybrid, tougher.
+     3. Brain: Boss-like, shoots Energy Balls, flees if too close.
+     4. Geco: Fast, shoots Ink Balls that blind the player.
+   - State Machine:
+     - IDLE: Wanders or stands still.
+     - CHASE: Moves towards player if within aggro range.
+     - ATTACK: Plays attack animation and deals damage/fires projectile.
+     - HIT: Stunned briefly when shot.
+     - DOWN: Dying animation (temporary state).
+     - FLOOR: Dead body (permanent state, non-collidable).
+   - Pathfinding: Direct line-of-sight movement with basic collision avoidance (sliding along walls).
+
+6. LEVEL GENERATION (`js/map.js`)
+   - Algorithm: Procedural Room Placement.
+     - Generates random non-overlapping rooms.
+     - Connects rooms with corridors.
+     - Fills rooms with random floor/ceiling textures.
+   - Spawning:
+     - Enemies: Weighted random spawning based on difficulty (Soldier > Monster > Brain > Geco).
+     - Items: Ammo, Health scattered in rooms.
+     - Objectives:
+       - 1 Empty Totem (Goal) placed in a random room.
+       - 3 Colored Totems (Red, Green, Blue) placed in different rooms.
+       - 2 Brain Guardians spawn near the Goal.
+
+7. AUDIO SYSTEM (`js/audio.js`)
+   - 3D Spatial Audio: Sounds pan (Left/Right) and attenuate based on distance and direction relative to the player.
+   - Music: Background tracks loop during gameplay.
+   - Sound Effects: Weapon fire, enemy growls/deaths, footsteps, UI sounds.
+   - Sonar: Variable ping rate and stereo balance to guide player to objectives.
+
+8. USER INTERFACE
+   - HUD: Health %, Ammo count, Level number, Weapon sprite (animated).
+   - Menus:
+     - Start Menu: Controls and "Enter Dungeon".
+     - Pause Menu: Volume controls, stats, resume/restart.
+     - Death Screen: "You Died", level reached, restart.
+     - Level Complete: Stats (Kills, Time), countdown to teleport.
+     - History Screen: Lore/Backstory image.
+
+9. ASSETS
+   - Sprites: Retro pixel art for enemies, weapons, and items.
+   - Textures: Brick, stone, wood, metal, carpet for environment.
+   - Audio: WAV/MP3 files for all SFX and Music.
+
+10. SUMMARY
+    RayCaster V0.5.1 is a complete, feature-rich retro FPS. It combines classic raycasting tech with modern procedural generation and a distinct "Totem Hunt" game loop. The code is modular, separating concerns into rendering, logic, and state, allowing for easy expansion (e.g., new enemies, weapons, or tile types).

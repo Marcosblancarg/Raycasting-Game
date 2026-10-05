@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.cache/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
