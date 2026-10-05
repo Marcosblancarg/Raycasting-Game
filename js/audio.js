@@ -228,6 +228,11 @@ export class AudioManager {
 
     load(key, src) {
         if (this.sounds[key]) return Promise.resolve(this.sounds[key]);
+        if (typeof src === 'string' && src.toLowerCase().endsWith('.mp3')) {
+            const fallback = this._createFallbackBuffer();
+            this.sounds[key] = fallback;
+            return Promise.resolve(fallback);
+        }
         return fetch(src)
             .then(response => {
                 if (!response.ok && response.status !== 0) throw new Error(`HTTP error! status: ${response.status}`);
@@ -247,6 +252,22 @@ export class AudioManager {
     }
 
     stop(key) {
+        if (this.currentMusic && this.currentMusic.key === key) {
+            if (this.currentMusic.element) {
+                try {
+                    this.currentMusic.element.pause();
+                    this.currentMusic.element.currentTime = 0;
+                    this.currentMusic.element.onended = null;
+                } catch (e) {}
+            }
+            if (this.currentMusic.source) {
+                try {
+                    this.currentMusic.source.stop();
+                    this.currentMusic.source.onended = null;
+                } catch (e) {}
+            }
+            this.currentMusic = null;
+        }
         if (this.activeSources[key]) {
             try {
                 this.activeSources[key].stop();
@@ -321,69 +342,56 @@ export class AudioManager {
     }
 
     playMusic(key, onEndedCallback) {
-        if (!this.ctx) this.init();
-        if (this.ctx && this.ctx.state === 'suspended') {
-            this.ctx.resume().catch(() => {});
+        let src = null;
+        const match = key.match(/bg_music_(\d+)/);
+        if (match && ASSETS && ASSETS.audio && ASSETS.audio.music) {
+            const idx = parseInt(match[1]) - 1;
+            src = ASSETS.audio.music[idx];
         }
 
-        if (!this.sounds[key]) {
-            const match = key.match(/bg_music_(\d+)/);
-            if (match && ASSETS && ASSETS.audio && ASSETS.audio.music) {
-                const idx = parseInt(match[1]) - 1;
-                const src = ASSETS.audio.music[idx];
-                if (src) {
-                    this.load(key, src).then(() => {
-                        this.playMusic(key, onEndedCallback);
-                    });
-                    return;
+        // Stop previous music
+        if (this.currentMusic) {
+            if (this.currentMusic.element) {
+                try {
+                    this.currentMusic.element.pause();
+                    this.currentMusic.element.currentTime = 0;
+                    this.currentMusic.element.onended = null;
+                } catch (e) {}
+            }
+            if (this.currentMusic.source) {
+                try {
+                    this.currentMusic.source.stop();
+                    this.currentMusic.source.onended = null;
+                } catch (e) {}
+            }
+            this.currentMusic = null;
+        }
+
+        if (src) {
+            try {
+                const audio = new Audio(src);
+                audio.volume = this.musicVolume;
+                if (onEndedCallback) {
+                    audio.onended = onEndedCallback;
                 }
+                const p = audio.play();
+                if (p && typeof p.catch === 'function') {
+                    p.catch(e => console.warn('Music play promise caught:', e));
+                }
+                this.currentMusic = { element: audio, key };
+            } catch (e) {
+                console.warn('Error creating Audio element for music:', e);
             }
-            return;
-        }
-
-        if (!this.sounds[key] || !this.sounds[key].duration) {
-            return;
-        }
-
-        try {
-            // Stop previous music (fade out could be nice but simple stop for now)
-            if (this.currentMusic && this.currentMusic.source) {
-                try { this.currentMusic.source.stop(); } catch (e) { }
-                this.currentMusic.source.onended = null; // Clear previous callback to avoid double triggers
-            }
-
-            if (!(this.sounds[key] instanceof AudioBuffer) && typeof this.sounds[key].getChannelData !== 'function') {
-                return;
-            }
-
-            const source = this.ctx.createBufferSource();
-            source.buffer = this.sounds[key];
-            source.loop = false; // playlist logic handles looping manually
-
-            const gainNode = this.ctx.createGain();
-            gainNode.gain.value = 1.0;
-
-            source.connect(gainNode);
-            if (this.musicNode) {
-                gainNode.connect(this.musicNode);
-            } else {
-                gainNode.connect(this.ctx.destination);
-            }
-
-            source.start(0);
-
-            if (onEndedCallback) {
-                source.onended = onEndedCallback;
-            }
-
-            this.currentMusic = { source, gainNode, key };
-        } catch (e) {
-            console.warn("Error playing music:", e);
         }
     }
 
     setMusicVolume(vol) {
         this.musicVolume = Math.max(0, Math.min(1, vol));
+        if (this.currentMusic && this.currentMusic.element) {
+            try {
+                this.currentMusic.element.volume = this.musicVolume;
+            } catch (e) {}
+        }
         this.updateVolumes();
     }
 
